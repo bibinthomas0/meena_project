@@ -1,0 +1,267 @@
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import Seller, Buyer,CustomUser
+from .serializers import SellerRegisterSerializer, BuyerSerializer  # Removed RegisterSerializer
+from rest_framework import viewsets, permissions,generics
+from rest_framework.permissions import BasePermission
+from .models import Product
+from .serializers import ProductSerializer
+from .serializers import UserSerializer
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
+from .models import Wishlist, Cart, CartProduct, Order, OrderItem, Product
+from .serializers import WishlistSerializer, CartSerializer, OrderSerializer
+
+class UserRegisterView(APIView):
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "User registered successfully!"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# ----------------- Seller Registration -----------------
+class SellerRegisterView(APIView):
+    def post(self, request):
+        serializer = SellerRegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Seller registered successfully!"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# ----------------- Buyer Registration -----------------
+class BuyerRegisterView(APIView):
+    def post(self, request):
+        serializer = BuyerSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Buyer registered successfully!"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# ----------------- User Login -----------------
+class LoginView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        if not username or not password:
+            return Response({"message": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(username=username, password=password)
+        if user:
+            refresh = RefreshToken.for_user(user)
+            return Response({"access_token": str(refresh.access_token), "refresh_token": str(refresh)}, status=status.HTTP_200_OK)
+
+        return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+# ----------------- Seller Login -----------------
+class SellerLoginView(APIView):
+    def post(self, request):
+        print(request.data)
+        username = request.data.get('username')
+        password = request.data.get('password')
+      
+        # Ensure both username and password are provided
+        if not username or not password:
+            return Response({"message": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Authenticate the user
+        user = authenticate(username=username, password=password)
+        print(user)
+        if user:
+            try:
+                # Attempt to retrieve the seller profile associated with the user
+                seller = Seller.objects.get(user=user)
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                data = {
+                    "message": "Login successful.",
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "seller_details": {
+                        "username": user.username,
+                        "email": user.email,
+                        "location": seller.location,
+                        "pincode": seller.pincode,
+                        "district": seller.district,
+                        "phone_number": seller.phone_number  # Include phone_number
+                    },
+                    "product_creation_link": "/seller/products/create/"  # Link to product creation page
+                }
+                return Response(data=data, status=status.HTTP_200_OK)
+
+            except Seller.DoesNotExist:
+                return Response({"message": "No seller profile found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+# ----------------- Buyer Login -----------------
+class BuyerLoginView(APIView):
+    def post(self, request):
+        print(request.data)
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        if not username or not password:
+            return Response({"message": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(username=username, password=password)
+        print(user)
+        if user:
+            try:
+                buyer = Buyer.objects.get(user=user)
+                print(buyer)
+                refresh = RefreshToken.for_user(user)
+                data={
+                    "message": "Login successful.",
+                    "access": str(refresh.access_token),
+                    "buyer_details": {
+                        "username": user.username,
+                        "email": user.email,
+                    }
+                }
+                return Response(data=data, status=status.HTTP_200_OK)
+            except Buyer.DoesNotExist:
+                return Response({"message": "No buyer profile found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+# --------------Category---------------
+class SellerProductViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only show products for the logged-in seller
+        return Product.objects.filter(seller=self.request.user)
+
+    def perform_create(self, serializer):
+        # Automatically assign the current user as the seller
+        serializer.save(seller=self.request.user)
+from rest_framework import viewsets
+from .models import Category
+from .serializers import CategorySerializer
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+
+# view 
+# List and Create Products
+class ProductListCreateView(generics.ListCreateAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated]  # Only authenticated users can add products
+
+    def get_queryset(self):
+        return Product.objects.filter(seller=self.request.user)  # Sellers see only their products
+
+# Custom permission for ownership
+class IsOwnerOrReadOnly(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return obj.seller == request.user # Ensure only product owners can modify
+# Retrieve, Update, Delete Product
+class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]  # Add both permission classes
+
+    def get_queryset(self):
+        return Product.objects.filter(seller=self.request.user)  # Ensure seller only sees their own products
+
+
+class WishlistView(generics.ListCreateAPIView):
+    serializer_class = WishlistSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Wishlist.objects.filter(user=self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        product = get_object_or_404(Product, id=request.data.get("product"))
+        wishlist_item, created = Wishlist.objects.get_or_create(user=request.user, product=product)
+        if created:
+            return Response({"message": "Product added to wishlist"}, status=status.HTTP_201_CREATED)
+        else:
+            wishlist_item.delete()
+            return Response({"message": "Product removed from wishlist"}, status=status.HTTP_200_OK)
+
+class CartView(generics.RetrieveAPIView):
+    serializer_class = CartSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        cart, _ = Cart.objects.get_or_create(user=self.request.user)
+        return cart
+
+class CartUpdateView(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, *args, **kwargs):
+        cart, _ = Cart.objects.get_or_create(user=request.user)
+        product = get_object_or_404(Product, id=request.data.get("product"))
+        quantity = request.data.get("quantity", 1)
+
+        if product.stock < quantity:
+            return Response({"error": "Not enough stock"}, status=status.HTTP_400_BAD_REQUEST)
+
+        cart_product, created = CartProduct.objects.get_or_create(cart=cart, product=product)
+        if not created:
+            cart_product.quantity += quantity
+        cart_product.save()
+
+        return Response({"message": "Product added/updated in cart"}, status=status.HTTP_200_OK)
+
+class CartDeleteView(generics.DestroyAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        cart = get_object_or_404(Cart, user=request.user)
+        product = get_object_or_404(Product, id=request.data.get("product"))
+
+        cart_product = get_object_or_404(CartProduct, cart=cart, product=product)
+        cart_product.delete()
+
+        return Response({"message": "Product removed from cart"}, status=status.HTTP_200_OK)
+
+class OrderCreateView(generics.CreateAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        cart = get_object_or_404(Cart, user=request.user)
+        if not cart.cart_products.exists():
+            return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
+
+        order = Order.objects.create(user=request.user)
+
+        for cart_product in cart.cart_products.all():
+            if cart_product.product.stock < cart_product.quantity:
+                return Response({"error": f"Not enough stock for {cart_product.product.title}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            cart_product.product.stock -= cart_product.quantity
+            cart_product.product.save()
+
+            OrderItem.objects.create(order=order, product=cart_product.product, quantity=cart_product.quantity)
+
+        cart.cart_products.all().delete()
+
+        return Response({"message": "Order created successfully"}, status=status.HTTP_201_CREATED)
+
+class OrderCancelView(generics.UpdateAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, *args, **kwargs):
+        order = get_object_or_404(Order, id=kwargs["pk"], user=request.user)
+        if order.status != "Pending":
+            return Response({"error": "Only pending orders can be cancelled"}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.status = "Cancelled"
+        order.save()
+        return Response({"message": "Order cancelled"}, status=status.HTTP_200_OK)
