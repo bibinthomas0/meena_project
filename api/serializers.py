@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import CustomUser, Seller, Buyer,User, Wishlist, Cart, CartProduct, Order, OrderItem, Product
+from .models import CustomUser, Enquiry, Seller, Buyer,User, Wishlist, Cart, CartProduct, Order, OrderItem, Product
 from django.contrib.auth.models import User
 
 
@@ -85,30 +85,12 @@ class BuyerSerializer(serializers.ModelSerializer):
 from .models import Product, Category
 
 class ProductSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Product
-        fields = [
-            'id',
-            'seller',  # Automatically set during product creation
-            # Display the category name (optional)
-            'title',
-            'description',
-            'price',
-            'stock',
-            'image',
-            'created_at',
-            'updated_at'
-        ]
-        read_only_fields = ['seller', 'created_at', 'updated_at']
+        fields = '__all__'
+        read_only_fields = ['seller']
 
-    def create(self, validated_data):
-        request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            validated_data['seller'] = request.user  # Automatically assign seller
-        return super().create(validated_data)
-from rest_framework import serializers
-from .models import Category
+
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -158,3 +140,19 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['id', 'user', 'created_at', 'status', 'order_items']
+
+
+class EnquirySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Enquiry
+        fields = ['id', 'product', 'quantity', 'status', 'created_at']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['buyer'] = request.user
+        return super().create(validated_data)
+    
+class EnquiryUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Enquiry
+        fields = ['status']

@@ -4,8 +4,8 @@ from rest_framework import status
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Seller, Buyer,CustomUser
-from .serializers import SellerRegisterSerializer, BuyerSerializer  # Removed RegisterSerializer
+from .models import Enquiry, Seller, Buyer,CustomUser
+from .serializers import EnquirySerializer, EnquiryUpdateSerializer, SellerRegisterSerializer, BuyerSerializer  # Removed RegisterSerializer
 from rest_framework import viewsets, permissions,generics
 from rest_framework.permissions import BasePermission
 from .models import Product
@@ -16,6 +16,10 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Wishlist, Cart, CartProduct, Order, OrderItem, Product
 from .serializers import WishlistSerializer, CartSerializer, OrderSerializer
+from rest_framework.decorators import api_view, permission_classes
+from .models import Category
+from .serializers import CategorySerializer
+
 
 class UserRegisterView(APIView):
     def post(self, request):
@@ -130,50 +134,47 @@ class BuyerLoginView(APIView):
                 return Response({"message": "No buyer profile found."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
-
-# --------------Category---------------
-class SellerProductViewSet(viewsets.ModelViewSet):
-    serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        # Only show products for the logged-in seller
-        return Product.objects.filter(seller=self.request.user)
-
-    def perform_create(self, serializer):
-        # Automatically assign the current user as the seller
-        serializer.save(seller=self.request.user)
-from rest_framework import viewsets
-from .models import Category
-from .serializers import CategorySerializer
+    
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
-# view 
-# List and Create Products
-class ProductListCreateView(generics.ListCreateAPIView):
-    serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticated]  # Only authenticated users can add products
 
-    def get_queryset(self):
-        return Product.objects.filter(seller=self.request.user)  # Sellers see only their products
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def product_list_create(request):
+    """List all products of the authenticated seller or create a new product."""
+    if request.method == 'GET':
+        products = Product.objects.filter(seller=request.user)
+        serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data)
+    elif request.method == 'POST':
+        serializer = ProductSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(seller=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# Custom permission for ownership
-class IsOwnerOrReadOnly(BasePermission):
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return obj.seller == request.user # Ensure only product owners can modify
-# Retrieve, Update, Delete Product
-class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]  # Add both permission classes
-
-    def get_queryset(self):
-        return Product.objects.filter(seller=self.request.user)  # Ensure seller only sees their own products
-
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def product_detail(request, pk):
+    """Retrieve, update, or delete a product by ID (only if owned by seller)."""
+    product = get_object_or_404(Product, pk=pk, seller=request.user)
+    
+    if request.method == 'GET':
+        serializer = ProductSerializer(product)
+        return Response(serializer.data)
+    elif request.method in ['PUT', 'PATCH']:
+        serializer = ProductSerializer(product, data=request.data, partial=(request.method == 'PATCH'))
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    elif request.method == 'DELETE':
+        product.delete()
+        return Response({'message': 'Product deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+    
 
 class WishlistView(generics.ListCreateAPIView):
     serializer_class = WishlistSerializer
@@ -265,3 +266,45 @@ class OrderCancelView(generics.UpdateAPIView):
         order.status = "Cancelled"
         order.save()
         return Response({"message": "Order cancelled"}, status=status.HTTP_200_OK)
+
+class EnquiryViewSet(viewsets.ModelViewSet):
+    serializer_class = EnquirySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'buyer_profile'):
+            return Enquiry.objects.filter(buyer=user)
+        elif hasattr(user, 'seller_profile'):
+            return Enquiry.objects.filter(product__seller=user)
+        return Enquiry.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        enquiry = serializer.save()
+        return Response(EnquirySerializer(enquiry).data, status=status.HTTP_201_CREATED)
+    
+
+class EnquiryStatusUpdateView(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def update(self, request, pk=None):
+        try:
+            enquiry = Enquiry.objects.get(pk=pk, product__seller=request.user)
+        except Enquiry.DoesNotExist:
+            return Response({"error": "Enquiry not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = EnquiryUpdateSerializer(enquiry, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            if enquiry.status == "Accepted":
+                self.create_order(enquiry)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def create_order(self, enquiry):
+        order = Order.objects.create(user=enquiry.buyer)
+        OrderItem.objects.create(order=order, product=enquiry.product, quantity=enquiry.quantity)
+        enquiry.product.stock -= enquiry.quantity
+        enquiry.product.save()
