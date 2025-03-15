@@ -34,6 +34,16 @@ DEBUG = True
 ALLOWED_HOSTS = []
 
 
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'meena_project2',         \
+        'USER': 'bibin',         # The username you just created
+        'PASSWORD': 'bibin',     # The password you set
+        'HOST': 'localhost',             # Change to your host if using a remote database
+        'PORT': '5432',                  # Default PostgreSQL port
+    }
+}
 # Application definition
 
 INSTALLED_APPS = [
@@ -153,27 +163,17 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",  # Or the path you specified
 ]
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'django_main',          # Your database name
-        'USER': 'meena',         # The username you just created
-        'PASSWORD': 'Meena@12345',     # The password you set
-        'HOST': 'localhost',             # Change to your host if using a remote database
-        'PORT': '5432',                  # Default PostgreSQL port
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'django_main',          # Your database name
+#         'USER': 'meena',         # The username you just created
+#         'PASSWORD': 'Meena@12345',     # The password you set
+#         'HOST': 'localhost',             # Change to your host if using a remote database
+#         'PORT': '5432',                  # Default PostgreSQL port
+#     }
+# }
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'meena_project',         \
-        'USER': 'bibin',         # The username you just created
-        'PASSWORD': 'bibin',     # The password you set
-        'HOST': 'localhost',             # Change to your host if using a remote database
-        'PORT': '5432',                  # Default PostgreSQL port
-    }
-}
 
 AUTH_USER_MODEL = 'api.CustomUser'  # Replace `your_app_name` with your actual app name
 SIMPLE_JWT = {

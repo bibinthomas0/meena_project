@@ -1,16 +1,12 @@
-from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Enquiry, Seller, Buyer,CustomUser
-from .serializers import EnquirySerializer, EnquiryUpdateSerializer, SellerRegisterSerializer, BuyerSerializer  # Removed RegisterSerializer
+from .models import Enquiry,CustomUser
+from .serializers import EnquirySerializer, EnquiryUpdateSerializer, OrderItemSerializer, OrderItemStatusUpdateSerializer, UserRegistrationSerializer
 from rest_framework import viewsets, permissions,generics
-from rest_framework.permissions import BasePermission
 from .models import Product
 from .serializers import ProductSerializer
-from .serializers import UserSerializer
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
@@ -19,124 +15,88 @@ from .serializers import WishlistSerializer, CartSerializer, OrderSerializer
 from rest_framework.decorators import api_view, permission_classes
 from .models import Category
 from .serializers import CategorySerializer
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import serializers, status
+from .order_serializers import OrderItemSerializer_2, OrderSerializer_2
 
 
-class UserRegisterView(APIView):
+class RegisterAPIView(APIView):
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
+        serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "User registered successfully!"}, status=status.HTTP_201_CREATED)
+            return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-# ----------------- Seller Registration -----------------
-class SellerRegisterView(APIView):
+
+class UserLoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+
+class LoginAPIView(APIView):
     def post(self, request):
-        serializer = SellerRegisterSerializer(data=request.data)
+        serializer = UserLoginSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Seller registered successfully!"}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            username = serializer.validated_data['username']
+            password = serializer.validated_data['password']
 
-# ----------------- Buyer Registration -----------------
-class BuyerRegisterView(APIView):
-    def post(self, request):
-        serializer = BuyerSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Buyer registered successfully!"}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# ----------------- User Login -----------------
-class LoginView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-
-        if not username or not password:
-            return Response({"message": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        user = authenticate(username=username, password=password)
-        if user:
-            refresh = RefreshToken.for_user(user)
-            return Response({"access_token": str(refresh.access_token), "refresh_token": str(refresh)}, status=status.HTTP_200_OK)
-
-        return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
-
-# ----------------- Seller Login -----------------
-class SellerLoginView(APIView):
-    def post(self, request):
-        print(request.data)
-        username = request.data.get('username')
-        password = request.data.get('password')
-      
-        # Ensure both username and password are provided
-        if not username or not password:
-            return Response({"message": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Authenticate the user
-        user = authenticate(username=username, password=password)
-        print(user)
-        if user:
-            try:
-                # Attempt to retrieve the seller profile associated with the user
-                seller = Seller.objects.get(user=user)
-                
-                # Generate JWT tokens
+            user = CustomUser.objects.filter(username=username).first()
+            if user and user.check_password(password):
                 refresh = RefreshToken.for_user(user)
-                data = {
-                    "message": "Login successful.",
-                    "access": str(refresh.access_token),
-                    "refresh": str(refresh),
-                    "seller_details": {
-                        "username": user.username,
-                        "email": user.email,
-                        "location": seller.location,
-                        "pincode": seller.pincode,
-                        "district": seller.district,
-                        "phone_number": seller.phone_number  # Include phone_number
-                    },
-                    "product_creation_link": "/seller/products/create/"  # Link to product creation page
-                }
-                return Response(data=data, status=status.HTTP_200_OK)
+                user_data = UserRegistrationSerializer(user).data
+                return Response({
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                    'user_type': 'admin' if user.is_superadmin else 'seller' if user.is_seller else 'buyer',
+                    'user_data': user_data
+                }, status=status.HTTP_200_OK)
 
-            except Seller.DoesNotExist:
-                return Response({"message": "No seller profile found."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+class ListUsersAPIView(APIView):
+    permission_classes = [IsAdminUser]
 
-# ----------------- Buyer Login -----------------
-class BuyerLoginView(APIView):
-    def post(self, request):
-        print(request.data)
-        username = request.data.get('username')
-        password = request.data.get('password')
+    def get(self, request, user_type):
+        if user_type == 'sellers':
+            users = CustomUser.objects.filter(is_seller=True, is_active=True)
+        elif user_type == 'buyers':
+            users = CustomUser.objects.filter(is_buyer=True, is_active=True)
+        else:
+            return Response({"error": "Invalid user type"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not username or not password:
-            return Response({"message": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = UserRegistrationSerializer(users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-        user = authenticate(username=username, password=password)
-        print(user)
-        if user:
-            try:
-                buyer = Buyer.objects.get(user=user)
-                print(buyer)
-                refresh = RefreshToken.for_user(user)
-                data={
-                    "message": "Login successful.",
-                    "access": str(refresh.access_token),
-                    "buyer_details": {
-                        "username": user.username,
-                        "email": user.email,
-                    }
-                }
-                return Response(data=data, status=status.HTTP_200_OK)
-            except Buyer.DoesNotExist:
-                return Response({"message": "No buyer profile found."}, status=status.HTTP_400_BAD_REQUEST)
+class UpdateUserAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
-        return Response({"message": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+    def patch(self, request):
+        serializer = UserRegistrationSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Profile updated successfully"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DeleteUserAPIView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def delete(self, request, user_id):
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            user.is_active = False
+            user.save()
+            return Response({"message": "User deactivated successfully"}, status=status.HTTP_200_OK)
+        except CustomUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
     
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class CategoryListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
@@ -144,17 +104,20 @@ class CategoryViewSet(viewsets.ModelViewSet):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def product_list_create(request):
-    """List all products of the authenticated seller or create a new product."""
     if request.method == 'GET':
         products = Product.objects.filter(seller=request.user)
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
+    
     elif request.method == 'POST':
         serializer = ProductSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(seller=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            print(serializer.errors)  # Debugging: Log validation errors
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
@@ -213,7 +176,7 @@ class CartUpdateView(generics.UpdateAPIView):
 
         cart_product, created = CartProduct.objects.get_or_create(cart=cart, product=product)
         if not created:
-            cart_product.quantity += quantity
+            cart_product.quantity = quantity
         cart_product.save()
 
         return Response({"message": "Product added/updated in cart"}, status=status.HTTP_200_OK)
@@ -254,18 +217,22 @@ class OrderCreateView(generics.CreateAPIView):
 
         return Response({"message": "Order created successfully"}, status=status.HTTP_201_CREATED)
 
-class OrderCancelView(generics.UpdateAPIView):
-    serializer_class = OrderSerializer
+class OrderItemStatusUpdateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def put(self, request, *args, **kwargs):
-        order = get_object_or_404(Order, id=kwargs["pk"], user=request.user)
-        if order.status != "Pending":
-            return Response({"error": "Only pending orders can be cancelled"}, status=status.HTTP_400_BAD_REQUEST)
+    def patch(self, request, order_item_id):
+        try:
+            order_item = OrderItem.objects.get(id=order_item_id)
+        except OrderItem.DoesNotExist:
+            return Response({"error": "Order item not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        order.status = "Cancelled"
-        order.save()
-        return Response({"message": "Order cancelled"}, status=status.HTTP_200_OK)
+        serializer = OrderItemStatusUpdateSerializer(order_item, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class EnquiryViewSet(viewsets.ModelViewSet):
     serializer_class = EnquirySerializer
@@ -273,9 +240,9 @@ class EnquiryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if hasattr(user, 'buyer_profile'):
+        if hasattr(user, 'is_buyer'):
             return Enquiry.objects.filter(buyer=user)
-        elif hasattr(user, 'seller_profile'):
+        elif hasattr(user, 'is_seller'):
             return Enquiry.objects.filter(product__seller=user)
         return Enquiry.objects.none()
 
@@ -306,5 +273,36 @@ class EnquiryStatusUpdateView(viewsets.ViewSet):
     def create_order(self, enquiry):
         order = Order.objects.create(user=enquiry.buyer)
         OrderItem.objects.create(order=order, product=enquiry.product, quantity=enquiry.quantity)
-        enquiry.product.stock -= enquiry.quantity
+        # enquiry.product.stock -= enquiry.quantity
         enquiry.product.save()
+
+
+class SellerOrdersView(generics.ListAPIView):
+    serializer_class = OrderItemSerializer_2
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        seller = self.request.user
+        return OrderItem.objects.filter(product__seller=seller)
+
+
+class BuyerOrdersView(generics.ListAPIView):
+    serializer_class = OrderSerializer_2
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return Order.objects.filter(user=self.request.user)
+
+
+class UpdateOrderItemStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+    def patch(self, request, order_item_id):
+        order_item = get_object_or_404(OrderItem, id=order_item_id, product__seller=request.user)
+        new_status = request.data.get("status")
+        
+        if new_status not in ["Pending", "Cancelled", "Completed"]:
+            return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        order_item.order.status = new_status
+        order_item.order.save()
+        
+        return Response({"message": "Order item status updated successfully"}, status=status.HTTP_200_OK)
+    
