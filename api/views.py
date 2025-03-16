@@ -1,3 +1,4 @@
+import random
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
@@ -48,13 +49,15 @@ class LoginAPIView(APIView):
             password = serializer.validated_data['password']
 
             user = CustomUser.objects.filter(username=username).first()
+            if user.is_active == False:
+                return Response({"error": "You are blocked from this site. Please contact administrator"}, status=status.HTTP_401_UNAUTHORIZED)
             if user and user.check_password(password):
                 refresh = RefreshToken.for_user(user)
                 user_data = UserRegistrationSerializer(user).data
                 return Response({
                     'refresh': str(refresh),
                     'access': str(refresh.access_token),
-                    'user_type': 'admin' if user.is_superadmin else 'seller' if user.is_seller else 'buyer',
+                    'user_type': 'admin' if user.is_superuser else 'seller' if user.is_seller else 'buyer',
                     'user_data': user_data
                 }, status=status.HTTP_200_OK)
 
@@ -65,10 +68,10 @@ class ListUsersAPIView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request, user_type):
-        if user_type == 'sellers':
-            users = CustomUser.objects.filter(is_seller=True, is_active=True)
-        elif user_type == 'buyers':
-            users = CustomUser.objects.filter(is_buyer=True, is_active=True)
+        if user_type == 'seller':
+            users = CustomUser.objects.filter(is_seller=True)
+        elif user_type == 'buyer':
+            users = CustomUser.objects.filter(is_buyer=True)
         else:
             return Response({"error": "Invalid user type"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -91,9 +94,12 @@ class DeleteUserAPIView(APIView):
     def delete(self, request, user_id):
         try:
             user = CustomUser.objects.get(id=user_id)
-            user.is_active = False
+            user.is_active = not user.is_active
             user.save()
-            return Response({"message": "User deactivated successfully"}, status=status.HTTP_200_OK)
+            if not user.is_active:
+                return Response({"message": "User deactivated successfully"}, status=status.HTTP_200_OK)
+            else:
+                return Response({"message": "User Activated successfully"}, status=status.HTTP_200_OK)
         except CustomUser.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -242,6 +248,14 @@ class OrderItemStatusUpdateAPIView(APIView):
 
         if serializer.is_valid():
             serializer.save()
+            user_email = order_item.order.user.email
+            if request.data['status'] == 'Shipped':
+                message = f"Good news! Your item {order_item.product.title} with the total price of {float(order_item.total_price())} has been Shipped. "
+            elif request.data['status'] == 'Out For Delivery':
+                message = f"Order is in your door step! Your item {order_item.product.title} with the total price of {float(order_item.total_price())} has been for out for delivery. Please make sure to available in the shop"
+            elif request.data['status'] == 'Delivered':
+                message = f"Order delivered! Your item {order_item.product.title} with the total price of {float(order_item.total_price())} has been delivered. Happy to shop with you"
+            mail =  send_order_status_email(self,message,user_email)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -252,9 +266,9 @@ class EnquiryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if hasattr(user, 'is_buyer'):
+        if user.is_buyer == True:
             return Enquiry.objects.filter(buyer=user)
-        elif hasattr(user, 'is_seller'):
+        elif user.is_seller == True:
             return Enquiry.objects.filter(product__seller=user)
         return Enquiry.objects.none()
 
@@ -307,31 +321,26 @@ class BuyerOrdersView(generics.ListAPIView):
 class UpdateOrderItemStatusView(APIView):
     permission_classes = [IsAuthenticated]
     def patch(self, request, order_item_id):
-        order_item = get_object_or_404(OrderItem, id=order_item_id, product__seller=request.user)
+        order_item = OrderItem.objects.get(id=order_item_id) 
         new_status = request.data.get("status")
         
-        if new_status not in ["Pending", "Cancelled", "Completed"]:
-            return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+        if order_item.status not in ["Pending"] and new_status == "Cancelled":
+            return Response({"error": "Item cant be cancelled"}, status=status.HTTP_400_BAD_REQUEST)
         
-        order_item.order.status = new_status
-        order_item.order.save()
+        order_item.status = new_status
+        order_item.save()
         
         return Response({"message": "Order item status updated successfully"}, status=status.HTTP_200_OK)
     
 
 
-    def send_otp_email(self,request,user_email):
-        otp = str(random.randint(100000, 999999)) 
-        message = f'Your OTP for verification: {otp}'
-        request.session['gmail']=user_email
-        request.session['otp'] = otp
-        request.session.save()
-        send_mail(
-            'OTP Verification',
-            message,
-            'zorpia.Ind@gmail.com', 
-            [user_email],  
-            fail_silently=False,
-        )
+def send_order_status_email(self,message,user_email):
+    status = send_mail(
+        'order status',
+        message,
+        'zorpia.Ind@gmail.com', 
+        [user_email],  
+        fail_silently=False,
+    )
 
-        return otp
+    return status

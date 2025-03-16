@@ -8,15 +8,15 @@ CustomUser = get_user_model()
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
-
+    is_active = serializers.BooleanField(read_only = True)
     class Meta:
         model = CustomUser
-        fields = ('username', 'email', 'phone_number', 'password', 'is_seller', 'is_buyer', 'pincode', 'district', 'location', 'date_of_birth', 'company_name', 'company_address', 'gstin', 'language')
+        fields = ('id','username', 'email', 'phone_number', 'password', 'is_seller', 'is_buyer', 'pincode', 'district', 'location', 'date_of_birth', 'company_name', 'company_address', 'gstin', 'language','is_active')
 
     def validate(self, attrs):
         is_seller = attrs.get('is_seller', False)
         is_buyer = attrs.get('is_buyer', False)
-
+ 
         if not is_seller and not is_buyer:
             raise serializers.ValidationError("User must be either a seller or a buyer.")
 

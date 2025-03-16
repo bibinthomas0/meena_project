@@ -34,6 +34,7 @@ urlpatterns = [
      path('categories/', CategoryListCreateView.as_view(), name='category-list-create'),
      path('enquiries/<int:pk>/status/', EnquiryStatusUpdateView.as_view({'put': 'update'}), name='enquiry-status-update'),
       path('validate-token/', validate_token, name='validate-token'),  
+      
 
 ]
  
