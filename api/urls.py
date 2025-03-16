@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (CategoryListCreateView,BuyerOrdersView, EnquiryStatusUpdateView,
    
-    WishlistView, CartView, CartUpdateView, CartDeleteView, OrderCreateView, product_detail, product_list_create
+    WishlistView, CartView, CartUpdateView, CartDeleteView, OrderCreateView, product_detail, product_list_create, validate_token
 )
 from .views import RegisterAPIView, LoginAPIView, ListUsersAPIView, UpdateUserAPIView, DeleteUserAPIView,EnquiryViewSet
 from .views import SellerOrdersView, UpdateOrderItemStatusView,OrderItemStatusUpdateAPIView
@@ -33,6 +33,7 @@ urlpatterns = [
     path('order-item/<int:order_item_id>/update-status/', UpdateOrderItemStatusView.as_view(), name='update-order-item-status'),
      path('categories/', CategoryListCreateView.as_view(), name='category-list-create'),
      path('enquiries/<int:pk>/status/', EnquiryStatusUpdateView.as_view({'put': 'update'}), name='enquiry-status-update'),
+      path('validate-token/', validate_token, name='validate-token'),  
 
 ]
  

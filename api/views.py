@@ -21,7 +21,12 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import serializers, status
 from .order_serializers import OrderItemSerializer_2, OrderSerializer_2
+from django.core.mail import send_mail
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def validate_token(request):
+    return Response({"message": "Token is valid!"}, status=200)
 
 class RegisterAPIView(APIView):
     def post(self, request):
@@ -105,7 +110,10 @@ class CategoryListCreateView(generics.ListCreateAPIView):
 @permission_classes([IsAuthenticated])
 def product_list_create(request):
     if request.method == 'GET':
-        products = Product.objects.filter(seller=request.user)
+        if request.user.is_buyer == True:
+            products = Product.objects.all()
+        else:
+            products = Product.objects.filter(seller=request.user)
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
     
@@ -160,14 +168,18 @@ class CartView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        cart, _ = Cart.objects.get_or_create(user=self.request.user)
-        return cart
+        cart = Cart.objects.filter(user=self.request.user).order_by('-created_at').first()
+        if not cart:
+            cart = Cart.objects.create(user=self.request.user)
+        return cart 
 
 class CartUpdateView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, *args, **kwargs):
-        cart, _ = Cart.objects.get_or_create(user=request.user)
+        cart = Cart.objects.filter(user=self.request.user).order_by('-created_at').first()
+        if not cart:
+            cart = Cart.objects.create(user=self.request.user)
         product = get_object_or_404(Product, id=request.data.get("product"))
         quantity = request.data.get("quantity", 1)
 
@@ -198,7 +210,7 @@ class OrderCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        cart = get_object_or_404(Cart, user=request.user)
+        cart = Cart.objects.filter(user=self.request.user).order_by('-created_at').first()
         if not cart.cart_products.exists():
             return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -306,3 +318,20 @@ class UpdateOrderItemStatusView(APIView):
         
         return Response({"message": "Order item status updated successfully"}, status=status.HTTP_200_OK)
     
+
+
+    def send_otp_email(self,request,user_email):
+        otp = str(random.randint(100000, 999999)) 
+        message = f'Your OTP for verification: {otp}'
+        request.session['gmail']=user_email
+        request.session['otp'] = otp
+        request.session.save()
+        send_mail(
+            'OTP Verification',
+            message,
+            'zorpia.Ind@gmail.com', 
+            [user_email],  
+            fail_silently=False,
+        )
+
+        return otp
