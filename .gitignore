@@ -1,8 +1,6 @@
 venv/
-api/migrations/
-*.pyc
-__pycache__/
-db.sqlite3
+
+
 .env
 # Byte-compiled / optimized / DLL files
 __pycache__/
