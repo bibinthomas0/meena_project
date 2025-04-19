@@ -154,3 +154,36 @@ class OrderItemStatusUpdateSerializer(serializers.ModelSerializer):
     
 
         return value
+
+
+
+
+class UserDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'email', 'phone_number', 'company_name', 'selected_pincodes']
+
+    def update(self, instance, validated_data): 
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+
+class SellerPincodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'selected_pincodes']
+        
+from .models import HelpAndSupport
+
+class HelpAndSupportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HelpAndSupport
+        fields = '__all__'
+        read_only_fields = ['user', 'created_on', 'reply_comment']
+
+class HelpAndSupportReplySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HelpAndSupport
+        fields = ['reply_comment']

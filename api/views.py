@@ -24,6 +24,10 @@ from rest_framework import serializers, status
 from .order_serializers import OrderItemSerializer_2, OrderSerializer_2
 from django.core.mail import send_mail
 
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from .serializers import UserDetailsSerializer
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def validate_token(request):
@@ -116,8 +120,9 @@ class CategoryListCreateView(generics.ListCreateAPIView):
 @permission_classes([IsAuthenticated])
 def product_list_create(request):
     if request.method == 'GET':
-        if request.user.is_buyer == True:
-            products = Product.objects.all()
+        if request.user.is_buyer:
+            selected_pincodes = request.user.selected_pincodes.split(',')  # Assuming this is a list of pincodes
+            products = Product.objects.filter(seller__pincode__in=selected_pincodes)
         else:
             products = Product.objects.filter(seller=request.user)
         serializer = ProductSerializer(products, many=True)
@@ -203,7 +208,11 @@ class CartDeleteView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, *args, **kwargs):
-        cart = get_object_or_404(Cart, user=request.user)
+        data = Cart.objects.filter(user=self.request.user).first()
+        if data:
+            cart = data
+        else:
+            cart = Cart.objects.create(user=self.request.user)
         product = get_object_or_404(Product, id=request.data.get("product"))
 
         cart_product = get_object_or_404(CartProduct, cart=cart, product=product)
@@ -344,3 +353,101 @@ def send_order_status_email(self,message,user_email):
     )
 
     return status
+
+
+
+
+
+class UserDetailsView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserDetailsSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class UserUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request):
+        serializer = UserDetailsSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "User details updated", "data": serializer.data})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SellerPincodeListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        data = CustomUser.objects.filter(is_seller=True).values_list('pincode',flat=True)
+        return Response(data, status=status.HTTP_200_OK)
+    
+
+
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from .models import HelpAndSupport
+from .serializers import HelpAndSupportSerializer, HelpAndSupportReplySerializer
+
+class HelpAndSupportCreateView(generics.CreateAPIView):
+    serializer_class = HelpAndSupportSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response({
+                "message": "Comment created successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            "message": "Failed to create comment.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HelpAndSupportListView(generics.ListAPIView):
+    serializer_class = HelpAndSupportSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        if user.is_superuser:
+            queryset = HelpAndSupport.objects.all().order_by('-created_on')
+        else:
+            queryset = HelpAndSupport.objects.filter(user=user).order_by('-created_on')
+
+        serializer = self.get_serializer(queryset, many=True) 
+        return Response({
+            "message": "Comments fetched successfully.",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class HelpAndSupportReplyView(generics.UpdateAPIView):
+    queryset = HelpAndSupport.objects.all()
+    serializer_class = HelpAndSupportReplySerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    "message": "Reply added successfully.",
+                    "data": serializer.data
+                }, status=status.HTTP_200_OK)
+            return Response({
+                "message": "Failed to add reply.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except HelpAndSupport.DoesNotExist:
+            return Response({
+                "message": "Comment not found."
+            }, status=status.HTTP_404_NOT_FOUND)

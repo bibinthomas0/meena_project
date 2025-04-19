@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (CategoryListCreateView,BuyerOrdersView, EnquiryStatusUpdateView,
+from .views import (CategoryListCreateView,BuyerOrdersView, EnquiryStatusUpdateView, SellerPincodeListView, UserDetailsView, UserUpdateView,
    
     WishlistView, CartView, CartUpdateView, CartDeleteView, OrderCreateView, product_detail, product_list_create, validate_token
 )
 from .views import RegisterAPIView, LoginAPIView, ListUsersAPIView, UpdateUserAPIView, DeleteUserAPIView,EnquiryViewSet
 from .views import SellerOrdersView, UpdateOrderItemStatusView,OrderItemStatusUpdateAPIView
+from .views import HelpAndSupportCreateView, HelpAndSupportListView, HelpAndSupportReplyView
 
 enquiry_list = EnquiryViewSet.as_view({
     'get': 'list',
@@ -34,7 +35,12 @@ urlpatterns = [
      path('categories/', CategoryListCreateView.as_view(), name='category-list-create'),
      path('enquiries/<int:pk>/status/', EnquiryStatusUpdateView.as_view({'put': 'update'}), name='enquiry-status-update'),
       path('validate-token/', validate_token, name='validate-token'),  
-      
+        path('user-details/', UserDetailsView.as_view(), name='user-details'),
+    path('update-user/', UserUpdateView.as_view(), name='update-user'),
+    path('seller-pincodes/', SellerPincodeListView.as_view(), name='seller-pincodes'),
+        path('support/create/', HelpAndSupportCreateView.as_view(), name='create-comment'),
+    path('support/', HelpAndSupportListView.as_view(), name='list-comments'),
+    path('support/reply/<int:pk>/', HelpAndSupportReplyView.as_view(), name='reply-comment'),
 
-]
+]  
  
