@@ -451,3 +451,19 @@ class HelpAndSupportReplyView(generics.UpdateAPIView):
             return Response({
                 "message": "Comment not found."
             }, status=status.HTTP_404_NOT_FOUND)
+
+class WishlistView(generics.ListCreateAPIView):
+    serializer_class = WishlistSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Wishlist.objects.filter(user=self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        product = get_object_or_404(Product, id=request.data.get("product"))
+        wishlist_item, created = Wishlist.objects.get_or_create(user=request.user, product=product)
+        if created:
+            return Response({"message": "Product added to wishlist"}, status=status.HTTP_201_CREATED)
+        else:
+            wishlist_item.delete()
+            return Response({"message": "Product removed from wishlist"}, status=status.HTTP_200_OK)

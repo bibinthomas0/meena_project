@@ -68,10 +68,17 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 
+class ProductInWishlistSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'title', 'price', 'stock', 'image']
+
 class WishlistSerializer(serializers.ModelSerializer):
+    product = ProductInWishlistSerializer()
     class Meta:
         model = Wishlist
         fields = ['id', 'product']
+
 
 class CartProductSerializer(serializers.ModelSerializer):
     total_price = serializers.SerializerMethodField()
@@ -174,7 +181,7 @@ class SellerPincodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ['username', 'selected_pincodes']
-        
+
 from .models import HelpAndSupport
 
 class HelpAndSupportSerializer(serializers.ModelSerializer):
