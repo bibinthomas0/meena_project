@@ -120,7 +120,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
 @permission_classes([IsAuthenticated])
 def product_list_create(request):
     if request.method == 'GET':
-        if request.user.is_buyer:
+        if request.user.is_buyer and request.user.selected_pincodes:
             selected_pincodes = request.user.selected_pincodes.split(',')  # Assuming this is a list of pincodes
             products = Product.objects.filter(seller__pincode__in=selected_pincodes)
         else:

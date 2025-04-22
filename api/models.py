@@ -15,13 +15,12 @@ class CustomUser(AbstractUser):
     location = models.CharField(max_length=255)
     date_of_birth = models.DateField(null=True, blank=True)
     date_joined = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     #if seller selected is_seller = True and fill the below fields
     company_name = models.CharField(max_length=255, null=True, blank=True)
     company_address = models.CharField(max_length=255, null=True, blank=True)
     gstin = models.CharField(max_length=15, null=True, blank=True)
-    language = models.CharField(max_length=255, null=True, blank=True)
     selected_pincodes = models.TextField(null=True, blank=True)  # Store as a comma-separated string
     def __str__(self):
         return self.username

@@ -11,7 +11,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     is_active = serializers.BooleanField(read_only = True)
     class Meta:
         model = CustomUser
-        fields = ('id','username', 'email', 'phone_number', 'password', 'is_seller', 'is_buyer', 'pincode', 'district', 'location', 'date_of_birth', 'company_name', 'company_address', 'gstin', 'language','is_active')
+        fields = ('id','username', 'email', 'phone_number', 'password', 'is_seller', 'is_buyer', 'pincode', 'district', 'location', 'date_of_birth', 'company_name', 'company_address', 'gstin','is_active')
 
     def validate(self, attrs):
         is_seller = attrs.get('is_seller', False)
@@ -41,7 +41,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             company_name=validated_data.get('company_name'),
             company_address=validated_data.get('company_address'),
             gstin=validated_data.get('gstin'),
-            language=validated_data.get('language')
         )
         return user
 
