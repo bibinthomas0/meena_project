@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (CategoryListCreateView,BuyerOrdersView, EnquiryStatusUpdateView, SellerPincodeListView, UserDetailsView, UserUpdateView,
+from .views import (CategoryListCreateView,BuyerOrdersView, EnquiryStatusUpdateView, SellerPincodeListView, SendEmailView, UserDetailsView, UserUpdateView,
    
     WishlistView, CartView, CartUpdateView, CartDeleteView, OrderCreateView, product_detail, product_list_create, validate_token
 )
@@ -41,6 +41,7 @@ urlpatterns = [
         path('support/create/', HelpAndSupportCreateView.as_view(), name='create-comment'),
     path('support/', HelpAndSupportListView.as_view(), name='list-comments'),
     path('support/reply/<int:pk>/', HelpAndSupportReplyView.as_view(), name='reply-comment'),
+    path('send-email/', SendEmailView.as_view(), name='send-email'),
 
 ]  
  

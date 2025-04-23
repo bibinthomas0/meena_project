@@ -343,9 +343,9 @@ class UpdateOrderItemStatusView(APIView):
     
 
 
-def send_order_status_email(self,message,user_email):
+def send_order_status_email(message,user_email):
     status = send_mail(
-        'order status',
+        'status',
         message,
         'zorpia.Ind@gmail.com', 
         [user_email],  
@@ -467,3 +467,18 @@ class WishlistView(generics.ListCreateAPIView):
         else:
             wishlist_item.delete()
             return Response({"message": "Product removed from wishlist"}, status=status.HTTP_200_OK)
+        
+class SendEmailView(APIView):
+    def post(self, request):
+        message = request.data.get('message')
+        user_email = request.data.get('user_email')
+
+        if not message or not user_email:
+            return Response({"error": "message and user_email are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        email_status = send_order_status_email(message, user_email)
+        user = get_object_or_404(CustomUser, email = user_email)
+        user.email_verified = True
+        user.save()
+        return Response({"email_sent": bool(email_status)}, status=status.HTTP_200_OK)
+
